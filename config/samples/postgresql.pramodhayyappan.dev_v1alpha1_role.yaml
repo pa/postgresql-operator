@@ -1,0 +1,9 @@
+apiVersion: postgresql.pramodhayyappan.dev.pramodhayyappan.dev/v1alpha1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/name: postgresql-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: role-sample
+spec:
+  # TODO(user): Add fields here
