@@ -8,7 +8,7 @@ metadata:
   name: role-viewer-role
 rules:
 - apiGroups:
-  - postgresql.pramodhayyappan.dev.pramodhayyappan.dev
+  - postgresql.pramodhayyappan.dev
   resources:
   - roles
   verbs:
@@ -16,7 +16,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - postgresql.pramodhayyappan.dev.pramodhayyappan.dev
+  - postgresql.pramodhayyappan.dev
   resources:
   - roles/status
   verbs:

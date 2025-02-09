@@ -8,7 +8,7 @@ metadata:
   name: role-editor-role
 rules:
 - apiGroups:
-  - postgresql.pramodhayyappan.dev.pramodhayyappan.dev
+  - postgresql.pramodhayyappan.dev
   resources:
   - roles
   verbs:
@@ -20,7 +20,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - postgresql.pramodhayyappan.dev.pramodhayyappan.dev
+  - postgresql.pramodhayyappan.dev
   resources:
   - roles/status
   verbs:

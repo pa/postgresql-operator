@@ -19,12 +19,20 @@ package controller
 import (
 	"context"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	postgresqlpramodhayyappandevv1alpha1 "github.com/pa/postgresql-operator.git/api/v1alpha1"
+)
+
+const (
+	passwordSecretNameField = ".spec.passwordSecretRef.name"
+	connectSecretNameField  = ".spec.connectSecretRef.name"
 )
 
 // RoleReconciler reconciles a Role object
@@ -33,9 +41,10 @@ type RoleReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=postgresql.pramodhayyappan.dev.pramodhayyappan.dev,resources=roles,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=postgresql.pramodhayyappan.dev.pramodhayyappan.dev,resources=roles/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=postgresql.pramodhayyappan.dev.pramodhayyappan.dev,resources=roles/finalizers,verbs=update
+//+kubebuilder:rbac:groups=postgresql.pramodhayyappan.dev,resources=roles,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=postgresql.pramodhayyappan.dev,resources=roles/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=postgresql.pramodhayyappan.dev,resources=roles/finalizers,verbs=update
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -50,13 +59,48 @@ func (r *RoleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	_ = log.FromContext(ctx)
 
 	// TODO(user): your logic here
+	
 
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RoleReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &postgresqlpramodhayyappandevv1alpha1.Role{}, passwordSecretNameField, func(rawObj client.Object) []string {
+		// Extract the Secret name from the Role Spec,
+		role := rawObj.(*postgresqlpramodhayyappandevv1alpha1.Role)
+		if role.Spec.PasswordSecretRef.Name == "" {
+			return nil
+		}
+		return []string{role.Spec.PasswordSecretRef.Name}
+	}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&postgresqlpramodhayyappandevv1alpha1.Role{}).
+		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, secret client.Object) []ctrl.Request {
+			// map a change from referenced secret to PasswordSecretRef, which causes its re-reconcile
+			roleList := &postgresqlpramodhayyappandevv1alpha1.RoleList{}
+			if err := mgr.GetClient().List(ctx, roleList); err != nil {
+				mgr.GetLogger().Error(err, "while listing PasswordSecretRef")
+				return nil
+			}
+
+			reqs := make([]ctrl.Request, 0, len(roleList.Items))
+			for _, item := range roleList.Items {
+				if item.Spec.PasswordSecretRef.Name == secret.GetName() {
+					reqs = append(reqs, ctrl.Request{
+						NamespacedName: types.NamespacedName{
+							Namespace: item.GetNamespace(),
+							Name:      item.GetName(),
+						},
+					})
+				}
+			}
+
+			return reqs
+		})).
 		Complete(r)
 }
