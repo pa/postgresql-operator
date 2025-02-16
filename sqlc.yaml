@@ -8,8 +8,8 @@ sql:
         package: "repository"
         out: "internal/repository"
         sql_package: "pgx/v5"
-        # overrides:
-        #   - db_type: "pg_catalog.timestamptz"
-        #     go_type:
-        #       import: "time"
-        #       type: "Time"
+        overrides:
+          - db_type: "timestamptz"
+            go_type:
+              import: "time"
+              type: "time.Time"

@@ -17,9 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"time"
-
-	corev1 "k8s.io/api/core/v1"
+	"github.com/pa/postgresql-operator.git/internal/common"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -50,11 +48,11 @@ type RoleOptions struct {
 
 	// ConnectionLimit sets CONNECTION LIMIT.
 	// +optional
-	ConnectionLimit int64 `json:"connectionLimit,omitempty"`
+	ConnectionLimit int32 `json:"connectionLimit,omitempty"`
 
 	// ValidUntil sets VALID UNTIL.
 	// +optional
-	ValidUntil time.Time `json:"validUntil,omitempty"`
+	ValidUntil string `json:"validUntil"`
 
 	// BypassRLS grants BYPASSRLS privilege when true.
 	// +optional
@@ -71,13 +69,13 @@ type RoleConfigurationParameter struct {
 type RoleSpec struct {
 	// ConnectSecretRef references the secret that contains the database connection details used
 	// for this role.
-	// +optional
-	ConnectSecretRef corev1.SecretKeySelector `json:"connectSecretRef,omitempty"`
+	// +required
+	ConnectSecretRef common.SecretKeySelector `json:"connectSecretRef"`
 
 	// PasswordSecretRef references the secret that contains the password used
 	// for this role. If no reference is given, a password will be auto-generated.
-	// +optional
-	PasswordSecretRef corev1.SecretKeySelector `json:"passwordSecretRef,omitempty"`
+	// +required
+	PasswordSecretRef common.SecretKeySelector `json:"passwordSecretRef"`
 
 	// Privileges to be granted.
 	// +optional
@@ -93,19 +91,23 @@ type RoleSpec struct {
 
 // RoleStatus defines the observed state of Role
 type RoleStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	Conditions []metav1.Condition `json:"conditions"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
 // Role is the Schema for the roles API
+// +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[-1:].status`
+// +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=`.status.conditions[-1:].reason`
+// +kubebuilder:printcolumn:name="Message",type=string,priority=1,JSONPath=`.status.conditions[-1:].message`
+// +kubebuilder:printcolumn:name="Last Transition Time",type=string,priority=1,JSONPath=`.status.conditions[-1:].lastTransitionTime`
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type Role struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   RoleSpec   `json:"spec,omitempty"`
+	Spec   RoleSpec   `json:"spec"`
 	Status RoleStatus `json:"status,omitempty"`
 }
 

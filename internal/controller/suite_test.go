@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"flag"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -51,6 +52,8 @@ func TestControllers(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+	var reconcilePeriod string
+	flag.StringVar(&reconcilePeriod, "reconcile-period", "600s", "Reconcile period for all controllers")
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{

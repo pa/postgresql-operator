@@ -6,6 +6,15 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: role-sample
 spec:
-  connectSecretRef: "test-connsecret"
-  passwordSecretRef: "test-passsecret"
+  connectSecretRef:
+    name: db-conn
+    namespace: default
+    key: connectionString
+  passwordSecretRef:
+    name: role-password
+    namespace: default
+    key: password
+  options:
+    superUser: true
+    connectionLimit: 10
 
