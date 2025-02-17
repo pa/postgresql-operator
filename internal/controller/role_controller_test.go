@@ -51,7 +51,7 @@ var _ = Describe("Role Controller", func() {
 			By("creating the connection secret resource for the Kind Role")
 			connSecret = &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "db-conn-secret", Namespace: "default"},
-				Data:       map[string][]byte{common.ResourceCredentialsSecretConnectionStringKey: []byte("postgres://postgres:YFRYVNh4qk@my-postgresql.default.svc.cluster.local:5432/postgres")},
+				Data:       map[string][]byte{"connectionString": []byte("postgres://postgres:YFRYVNh4qk@my-postgresql.default.svc.cluster.local:5432/postgres")},
 			}
 			Expect(k8sClient.Create(ctx, connSecret)).To(Succeed())
 
