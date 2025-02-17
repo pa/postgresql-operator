@@ -171,15 +171,20 @@ func (r *RoleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			controllerutil.AddFinalizer(role, roleFinalizer)
 			err = r.Update(ctx, role)
 			if err != nil {
+				r.logger.Error(err, "Error while adding the finalizer")
 				return ctrl.Result{}, nil
 			}
 		}
 	} else {
 		if controllerutil.ContainsFinalizer(role, roleFinalizer) {
-			r.DeletRole(ctx, conn, role)
+			typeName, status, reason, message := r.DeletRole(ctx, conn, role)
+			if status != metav1.ConditionTrue {
+				r.appendRoleStatusCondition(ctx, role, typeName, status, reason, message)
+			}
 			controllerutil.RemoveFinalizer(role, roleFinalizer)
 			err := r.Update(ctx, role)
 			if err != nil {
+				r.logger.Error(err, "Error while removing the finalizer")
 				return ctrl.Result{}, nil
 			}
 		}
@@ -189,23 +194,40 @@ func (r *RoleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// Initialize repository object
 	repo := repository.New(conn)
 
-	if role.Generation == 2 {
+	// If there are no status conditions, it indicates a new role creation
+	if !(len(role.Status.Conditions) > 0) {
 		// Check if role exists
 		row, _ := repo.GetRoleByName(ctx, pgtype.Text{String: role.Name, Valid: true})
 		// Delete role if already exists
 		if row.Rolname.Valid {
-			r.DeletRole(ctx, conn, role)
+			typeName, status, reason, message := r.DeletRole(ctx, conn, role)
+			if status != metav1.ConditionTrue {
+				r.appendRoleStatusCondition(ctx, role, typeName, status, reason, message)
+				return ctrl.Result{RequeueAfter: roleReconcileTime}, nil
+			}
 		}
 		typeName, status, reason, message := r.CreateRole(ctx, conn, role, rolePassword)
 		r.appendRoleStatusCondition(ctx, role, typeName, status, reason, message)
 	} else {
-		isPasswordSync, isRoleInSync, err := r.ObserveRoleState(ctx, repo, role, rolePassword)
-		if err != nil {
-			r.appendRoleStatusCondition(ctx, role, common.FAIL, metav1.ConditionFalse, "ObserveStateFailure", err.Error())
-		}
-		if !isPasswordSync || !isRoleInSync {
-			typeName, status, reason, message := r.SyncRole(ctx, conn, role, rolePassword, !isPasswordSync)
+		if role.Status.Conditions[0].Reason == ROLECREATEFAILED || role.Status.Conditions[0].Reason == ROLEDELETEFAILED {
+			typeName, status, reason, message := r.DeletRole(ctx, conn, role)
+			if status != metav1.ConditionTrue {
+				r.appendRoleStatusCondition(ctx, role, typeName, status, reason, message)
+				return ctrl.Result{RequeueAfter: roleReconcileTime}, nil
+			}
+			typeName, status, reason, message = r.CreateRole(ctx, conn, role, rolePassword)
 			r.appendRoleStatusCondition(ctx, role, typeName, status, reason, message)
+		} else {
+			isPasswordSync, isRoleInSync, err := r.ObserveRoleState(ctx, repo, role, rolePassword)
+			if err != nil {
+				r.logger.Error(err, "Error while observig the role")
+				r.appendRoleStatusCondition(ctx, role, common.FAIL, metav1.ConditionFalse, "ObserveStateFailure", err.Error())
+			}
+			// Synchronize if role options or password are out of sync
+			if !isPasswordSync || !isRoleInSync {
+				typeName, status, reason, message := r.SyncRole(ctx, conn, role, rolePassword, !isPasswordSync)
+				r.appendRoleStatusCondition(ctx, role, typeName, status, reason, message)
+			}
 		}
 	}
 
@@ -259,26 +281,14 @@ func (r *RoleReconciler) appendRoleStatusCondition(ctx context.Context, role *po
 	time := metav1.Time{Time: time.Now()}
 	condition := metav1.Condition{Type: typeName, Status: status, Reason: reason, Message: message, LastTransitionTime: time}
 
-	roleStatusConditions := role.Status.Conditions
-
-	if len(roleStatusConditions) > 0 {
-		// Only keep 5 statuses
-		if len(roleStatusConditions) >= 5 {
-			roleStatusConditions = roleStatusConditions[len(roleStatusConditions)-5:]
-		}
-
-		lastCondition := &roleStatusConditions[len(roleStatusConditions)-1]
-		if lastCondition.Reason != condition.Reason {
-			role.Status.Conditions = append(roleStatusConditions, condition)
-			if err := r.Status().Update(ctx, role); err != nil {
-				r.logger.Error(err, fmt.Sprintf("Resource status update failed for role `%s`", role.Name))
-			}
-		}
+	if len(role.Status.Conditions) > 0 {
+		role.Status.Conditions[0] = condition
 	} else {
-		role.Status.Conditions = append(roleStatusConditions, condition)
-		if err := r.Status().Update(ctx, role); err != nil {
-			r.logger.Error(err, fmt.Sprintf("Resource status update failed for role `%s`", role.Name))
-		}
+		role.Status.Conditions = append(role.Status.Conditions, condition)
+	}
+
+	if err := r.Status().Update(ctx, role); err != nil {
+		r.logger.Error(err, fmt.Sprintf("Resource status update failed for role `%s`", role.Name))
 	}
 }
 
