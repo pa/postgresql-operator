@@ -152,11 +152,11 @@ func (r *RoleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	// Connect to Database
-	conn, err := pgx.Connect(context.Background(), string(connectionSecret.Data[common.ResourceCredentialsSecretConnectionStringKey]))
+	conn, err := pgx.Connect(context.Background(), string(connectionSecret.Data[role.Spec.ConnectSecretRef.Key]))
 	if err != nil {
 		message := fmt.Sprintf(
 			"Cannot connect to dataase, check if required keys `%s` in secret `%s/%s` should not be empty or null.",
-			common.ResourceCredentialsSecretConnectionStringKey,
+			role.Spec.ConnectSecretRef.Key,
 			role.Spec.ConnectSecretRef.Namespace,
 			role.Spec.ConnectSecretRef.Name,
 		)

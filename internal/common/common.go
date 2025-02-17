@@ -14,9 +14,6 @@ import (
 )
 
 const (
-	// ResourceCredentialsSecretEndpointKey is the key inside a connection secret for the connection endpoint
-	ResourceCredentialsSecretConnectionStringKey = "connectionString"
-
 	// Status type for Role
 	CREATE = "Create"
 	SYNC   = "Sync"

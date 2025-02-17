@@ -22,4 +22,3 @@ spec:
       value: "100000"
     - name: client_min_messages
       value: DEBUG
-
