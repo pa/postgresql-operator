@@ -78,6 +78,7 @@ SELECT EXISTS (
     AND COALESCE(rolreplication, false) = $7
     AND rolconnlimit = $8
     AND COALESCE(rolbypassrls, false) = $9
+    AND rolconfig = $10
 ) AS exists
 `
 
@@ -91,6 +92,7 @@ type IsRoleInSyncParams struct {
 	Rolreplication pgtype.Bool `json:"rolreplication"`
 	Rolconnlimit   pgtype.Int4 `json:"rolconnlimit"`
 	Rolbypassrls   pgtype.Bool `json:"rolbypassrls"`
+	Rolconfig      interface{} `json:"rolconfig"`
 }
 
 func (q *Queries) IsRoleInSync(ctx context.Context, arg IsRoleInSyncParams) (bool, error) {
@@ -104,6 +106,7 @@ func (q *Queries) IsRoleInSync(ctx context.Context, arg IsRoleInSyncParams) (boo
 		arg.Rolreplication,
 		arg.Rolconnlimit,
 		arg.Rolbypassrls,
+		arg.Rolconfig,
 	)
 	var exists bool
 	err := row.Scan(&exists)

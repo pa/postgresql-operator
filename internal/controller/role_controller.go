@@ -37,6 +37,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/lib/pq"
 	postgresql "github.com/pa/postgresql-operator.git/api/v1alpha1"
 	"github.com/pa/postgresql-operator.git/internal/common"
 	"github.com/pa/postgresql-operator.git/internal/repository"
@@ -231,8 +232,6 @@ func (r *RoleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 	}
 
-	// TODO: Support for Configuration Parameter
-
 	return ctrl.Result{RequeueAfter: roleReconcileTime}, nil
 }
 
@@ -323,7 +322,7 @@ func optionsToClauses(ro postgresql.RoleOptions) []string {
 		roc = append(roc, connectionLimit)
 	}
 	if len(ro.ValidUntil) > 0 {
-		validUntil := fmt.Sprintf("VALID UNTIL '%s'", ro.ValidUntil)
+		validUntil := fmt.Sprintf("VALID UNTIL %s", pq.QuoteIdentifier(ro.ValidUntil))
 		roc = append(roc, validUntil)
 	}
 
@@ -332,11 +331,22 @@ func optionsToClauses(ro postgresql.RoleOptions) []string {
 
 func (r *RoleReconciler) CreateRole(ctx context.Context, conn *pgx.Conn, role *postgresql.Role, rolePassword string) (string, metav1.ConditionStatus, string, string) {
 	options := strings.Join(optionsToClauses(role.Spec.Options), " ")
-	_, err := conn.Exec(ctx, fmt.Sprintf("CREATE ROLE \"%s\" WITH PASSWORD '%s' %s", role.Name, rolePassword, options))
+	_, err := conn.Exec(ctx, fmt.Sprintf("CREATE ROLE %s WITH PASSWORD %s %s", pq.QuoteIdentifier(role.Name), pq.QuoteLiteral(rolePassword), options))
 	if err != nil {
 		message := fmt.Sprintf("Failed to create Role `%s`.", role.Name)
 		r.logger.Error(err, message)
 		return common.FAIL, metav1.ConditionFalse, ROLECREATEFAILED, message
+	}
+
+	if role.Spec.ConfigurationParameters != nil {
+		for _, v := range *role.Spec.ConfigurationParameters {
+			_, err := conn.Exec(ctx, fmt.Sprintf("ALTER ROLE %s SET %s=%s", pq.QuoteIdentifier(role.Name), pq.QuoteIdentifier(v.Name), pq.QuoteIdentifier(v.Value)))
+			if err != nil {
+				message := fmt.Sprintf("Failed to alter Role `%s` with configuration parameter %s", role.Name, v)
+				r.logger.Error(err, message)
+				return common.FAIL, metav1.ConditionFalse, ROLECREATEFAILED, message
+			}
+		}
 	}
 
 	message := fmt.Sprintf("Role `%s` got created successfully", role.Name)
@@ -345,7 +355,7 @@ func (r *RoleReconciler) CreateRole(ctx context.Context, conn *pgx.Conn, role *p
 }
 
 func (r *RoleReconciler) DeletRole(ctx context.Context, conn *pgx.Conn, role *postgresql.Role) (string, metav1.ConditionStatus, string, string) {
-	_, err := conn.Exec(ctx, fmt.Sprintf("DROP ROLE IF EXISTS \"%s\"", role.Name))
+	_, err := conn.Exec(ctx, fmt.Sprintf("DROP ROLE IF EXISTS %s", pq.QuoteIdentifier(role.Name)))
 	if err != nil {
 		message := fmt.Sprintf("Failed to drop Role `%s`.", role.Name)
 		r.logger.Error(err, message)
@@ -359,7 +369,7 @@ func (r *RoleReconciler) DeletRole(ctx context.Context, conn *pgx.Conn, role *po
 
 func (r *RoleReconciler) SyncRole(ctx context.Context, conn *pgx.Conn, role *postgresql.Role, rolePassword string, isPasswordSync bool) (string, metav1.ConditionStatus, string, string) {
 	options := strings.Join(optionsToClauses(role.Spec.Options), " ")
-	_, err := conn.Exec(ctx, fmt.Sprintf("ALTER ROLE \"%s\" WITH PASSWORD '%s' %s", role.Name, rolePassword, options))
+	_, err := conn.Exec(ctx, fmt.Sprintf("ALTER ROLE %s WITH PASSWORD %s %s", pq.QuoteIdentifier(role.Name), pq.QuoteLiteral(rolePassword), options))
 	if err != nil {
 		if isPasswordSync {
 			message := fmt.Sprintf("Failed to sync Role `%s` with password", role.Name)
@@ -369,6 +379,18 @@ func (r *RoleReconciler) SyncRole(ctx context.Context, conn *pgx.Conn, role *pos
 		message := fmt.Sprintf("Failed to sync Role `%s`.", role.Name)
 		r.logger.Error(err, message)
 		return common.FAIL, metav1.ConditionFalse, ROLESYNCFAILED, message
+	}
+
+	if role.Spec.ConfigurationParameters != nil {
+		conn.Exec(ctx, fmt.Sprintf("ALTER ROLE %s RESET ALL", pq.QuoteIdentifier(role.Name)))
+		for _, v := range *role.Spec.ConfigurationParameters {
+			_, err := conn.Exec(ctx, fmt.Sprintf("ALTER ROLE %s SET %s=%s", pq.QuoteIdentifier(role.Name), pq.QuoteIdentifier(v.Name), pq.QuoteIdentifier(v.Value)))
+			if err != nil {
+				message := fmt.Sprintf("Failed to alter Role `%s` with configuration parameter %s", role.Name, v)
+				r.logger.Error(err, message)
+				return common.FAIL, metav1.ConditionFalse, ROLESYNCFAILED, message
+			}
+		}
 	}
 
 	if isPasswordSync {
@@ -382,6 +404,12 @@ func (r *RoleReconciler) SyncRole(ctx context.Context, conn *pgx.Conn, role *pos
 }
 
 func (r *RoleReconciler) ObserveRoleState(ctx context.Context, repo *repository.Queries, role *postgresql.Role, rolePassword string) (bool, bool, error) {
+	// Convert []]postgresql.RoleConfigurationParameter to Postgres Array
+	var configParamStrings []string
+	for _, param := range *role.Spec.ConfigurationParameters {
+		configParamStrings = append(configParamStrings, fmt.Sprintf("%s=%s", param.Name, param.Value))
+	}
+
 	// Although using the standard library would have been an option, sqlc does not support overrides for roles, hence the use of pgtype.
 	isRoleInSync, err := repo.IsRoleInSync(ctx, repository.IsRoleInSyncParams{
 		Rolname: pgtype.Text{
@@ -420,6 +448,7 @@ func (r *RoleReconciler) ObserveRoleState(ctx context.Context, repo *repository.
 			Bool:  role.Spec.Options.BypassRLS,
 			Valid: true,
 		},
+		Rolconfig: configParamStrings,
 	})
 	if err != nil {
 		return false, false, err

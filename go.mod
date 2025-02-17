@@ -7,6 +7,7 @@ toolchain go1.23.3
 require (
 	github.com/go-logr/logr v1.4.1
 	github.com/jackc/pgx/v5 v5.7.2
+	github.com/lib/pq v1.10.9
 	github.com/onsi/ginkgo/v2 v2.14.0
 	github.com/onsi/gomega v1.30.0
 	golang.org/x/crypto v0.31.0

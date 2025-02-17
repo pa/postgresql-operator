@@ -19,4 +19,5 @@ SELECT EXISTS (
     AND COALESCE(rolreplication, false) = $7
     AND rolconnlimit = $8
     AND COALESCE(rolbypassrls, false) = $9
+    AND rolconfig = $10
 ) AS exists;

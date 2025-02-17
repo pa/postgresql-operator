@@ -16,5 +16,10 @@ spec:
     key: password
   options:
     superUser: true
-    connectionLimit: 10
+    connectionLimit: 100
+  configurationParameters:
+    - name: maintenance_work_mem
+      value: "100000"
+    - name: client_min_messages
+      value: DEBUG
 
